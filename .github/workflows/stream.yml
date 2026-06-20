@@ -1,0 +1,70 @@
+name: بلا
+
+on:
+  workflow_dispatch:
+    inputs:
+      SOURCE_LINKS:
+        description: 'روابط البث - فرق بينهم بـ ,'
+        required: true
+
+      FB_STREAM_KEYS:
+        description: 'مفاتيح البث - فرق بينهم بـ ,'
+        required: true
+
+jobs:
+  multi-broadcast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⚡ Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          
+      - name: 🚀 Start Multi Streaming
+        shell: bash
+        run: |
+          echo "=============================="
+          echo "🚀 STARTING MULTI STREAM..."
+          echo "=============================="
+          
+          IFS=',' read -ra SOURCES <<< "${{ github.event.inputs.SOURCE_LINKS }}"
+          IFS=',' read -ra KEYS <<< "${{ github.event.inputs.FB_STREAM_KEYS }}"
+          
+          COUNT_SOURCES=${#SOURCES[@]}
+          COUNT_KEYS=${#KEYS[@]}
+          
+          if [ "$COUNT_SOURCES" -ne "$COUNT_KEYS" ]; then
+            echo "❌ عدد الروابط وعدد المفاتيح غير متساوي"
+            exit 1
+          fi
+          
+          for (( i=0; i<$COUNT_SOURCES; i++ ))
+          do
+            SOURCE=$(echo "${SOURCES[$i]}" | xargs)
+            KEY=$(echo "${KEYS[$i]}" | xargs)
+            
+            echo "▶️ Launch Stream $((i+1))"
+            
+            # تم استخدام -c copy لنقل البث بدون إعادة ضغط لتقليل استهلاك CPU لـ 0%
+            ffmpeg \
+            -hide_banner \
+            -loglevel error \
+            -reconnect 1 \
+            -reconnect_streamed 1 \
+            -reconnect_delay_max 10 \
+            -thread_queue_size 4096 \
+            -i "$SOURCE" \
+            -c copy \
+            -f flv \
+            "rtmps://live-api-s.facebook.com:443/rtmp/$KEY" > stream_$i.log 2>&1 &
+            
+            echo "✅ Stream $((i+1)) Started"
+          done
+          
+          echo "=============================="
+          echo "🔥 ALL STREAMS RUNNING (MAX PERFORMANCE)"
+          echo "=============================="
+          
+          # الانتظار حتى تنتهي جميع البثوث أو ينتهي وقت تشغيل GitHub Actions
+          wait
